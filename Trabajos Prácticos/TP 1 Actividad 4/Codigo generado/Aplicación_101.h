@@ -9,12 +9,6 @@ namespace TP1Act4 {
 class Aplicación_101
 {
 public:
-  // Public attribute accessor methods
-  //  
-  // Public attribute accessor methods
-  //  
-  /**
-   */
   virtual void Input_datos() = 0;
   /**
    */
@@ -26,15 +20,9 @@ public:
    */
   virtual void Graficar() = 0;
 protected:
-  // Protected attribute accessor methods
-  //  
-  // Protected attribute accessor methods
-  //
+  
 private:
-  // Private attribute accessor methods
-  //  
-  // Private attribute accessor methods
-  //
+  
 };
 } // end of package namespace
 #endif // APLICACIÓN_101_H
