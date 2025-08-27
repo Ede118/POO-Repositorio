@@ -5,6 +5,7 @@
 #include "TP1Act4/Carga_101.h"
 #include "TP1Act4/Carga_101.h"
 
+#include string
 #include vector
 
 

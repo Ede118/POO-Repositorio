@@ -4,6 +4,8 @@
 
 #include "TP1Act4/Carga_101.h"
 
+#include string
+
 
 namespace TP1Act4 {
 

@@ -6,6 +6,7 @@
 #include "TP1Act4/Carga_Distribuida_101.h"
 #include "TP1Act4/Carga_Puntual_101.h"
 
+#include string
 #include vector
 
 class Viga_101;
