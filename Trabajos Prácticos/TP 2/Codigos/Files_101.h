@@ -41,7 +41,7 @@ class Files_101 {
     //------- Métodos ------- //
     
     // Apertura/cierre
-    void open(char mode); // 'r' lectura, 'w' escritura (trunca)
+    void open(char mode); // 'r' lectura, 'w' escritura (trunca) o 'A' (append)
     void close();
 
     // Consultas/atributos
@@ -81,6 +81,9 @@ class Files_101 {
     std::filesystem::path path_;
     mutable std::fstream fs_;
     
+    bool is_read_mode_ = false;
+    bool is_write_mode_ = false;
+
     // ---- Métodos privados ---- //
     static std::string nowISO8601();
     static std::string defaultOwner();

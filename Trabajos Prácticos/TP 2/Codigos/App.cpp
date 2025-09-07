@@ -70,6 +70,9 @@ static void printInfo(const FileInfo& info){
               << "dimension: " << info.dimension << "\n";
 }
 
+App::App() = default;
+App::~App() = default;
+
 int App::run(int argc, char** argv){
     try{
         CLI cli(argc, argv);
@@ -78,34 +81,35 @@ int App::run(int argc, char** argv){
         Files_101 doc(cli.filename());
 
         if(cli.mode()==Mode::Write){
-            doc.open('w');
+            if (cli.mode()==Mode::Write){
+                bool need_header = true;
 
-            // Cabecera por defecto (puede reemplazarse si la primer línea lo es)
-            // Si te llega JSON/XML, las primeras claves no están disponibles sin un parser completo;
-            // usamos una cabecera genérica.
-            doc.write("c0,c1,c2,c3");
-
-            int N = cli.readCount();
-            if(N <= 0) N = 5; // por defecto, 5 lecturas
-            std::string line;
-            for(int i=0;i<N;++i){
-                if(!std::getline(std::cin, line)) break;
-                auto fields = parseToFields(cli.inputFmt(), line);
-                if(fields.empty()){
-                    // si vino vacío, escribir crudo para no perderlo
-                    doc.write(line);
-                } else {
-                    doc.writeParsed(fields);
+                // si vamos a agregar y el archivo ya tiene contenido, no escribas cabecera
+                Files_101 probe(cli.filename());
+                if (cli.append() && probe.exist()) {
+                    probe.open('r');
+                    need_header = (probe.getDimension()==0);
+                    probe.close();
                 }
-            }
-            doc.close();
 
-            // Mostrar info y una vista rápida en CSV
-            doc.open('r');
-            printInfo(doc.getInfo());
-            std::cout << "\n" << doc.getCSV();
-            doc.close();
+                // abrir en 'a' si -A, si no 'w'
+                Files_101 doc(cli.filename());
+                doc.open(cli.append() ? 'a' : 'w');
 
+                if (need_header) {
+                    doc.write("c0,c1,c2,c3");
+                }
+
+                int N = cli.readCount() > 0 ? cli.readCount() : 5;
+                std::string line;
+                for (int i=0; i<N; ++i){
+                    if(!std::getline(std::cin, line)) break;
+                    auto fields = parseToFields(cli.inputFmt(), line);
+                    if(fields.empty()) doc.write(line);
+                    else               doc.writeParsed(fields);
+                }
+                doc.close();
+            } 
         } else {
             // READ
             doc.open('r');

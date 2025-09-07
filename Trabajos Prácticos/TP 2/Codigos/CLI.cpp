@@ -34,6 +34,8 @@ void CLI::parse(){
             n_ = std::stoi(argv_[++i]);
         } else if(std::strcmp(argv_[i],"-d")==0 && i+1<argc_){
             dir_ = argv_[++i];
+        } else if(std::strcmp(argv_[i],"-A")==0){
+            append_ = true;
         } else {
             throw AppError(std::string("Opción desconocida: ") + argv_[i]);
         }

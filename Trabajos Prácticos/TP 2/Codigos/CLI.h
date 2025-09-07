@@ -46,6 +46,7 @@ public:
     OutputFmt outputFmt() const;     // solo si -m r
     int readCount() const;           // -n (para escritura)
     std::string baseDir() const;     // si te dejan override (sino ignorar)
+    bool append() const { return append_; } // si se usa -a (solo escritura)
 
 private:
     // Variables miembro
@@ -58,6 +59,7 @@ private:
     std::string file_;
     std::string dir_;
     int n_ = 0;
+    bool append_ = false;
 };
 
 #endif // CLI_H

@@ -15,10 +15,11 @@
 
 using namespace std;
 
-
+/*
 static string pathJoin(const string& a, const string& b){
     return (std::filesystem::path(a) / b).string();
 }
+*/
 
 string Files_101::sanitize(const string& s){
     // minimal: quitar espacios de los extremos
@@ -49,7 +50,10 @@ string Files_101::defaultOwner(){
     return u? string(u) : "unknown";
 }
 
-// Constructores
+// %%%%%%%%%%%%%%%%%%%% //
+//    Constructores     //
+// %%%%%%%%%%%%%%%%%%%% //
+
 Files_101::Files_101()
 : name_("noname"), CreationDate_(nowISO8601()), Owner_(defaultOwner()) {
     std::filesystem::create_directories(kBaseDir);
@@ -74,7 +78,17 @@ Files_101::Files_101(const std::string& name)
     path_ = std::filesystem::path(kBaseDir) / (name_ + kExt);
 }
 
-// Apertura/cierre
+// %%%%%%%%%%%%%%%%%%%% //
+// ---- Destructor ---- //
+// %%%%%%%%%%%%%%%%%%%% //
+
+Files_101::~Files_101() = default;
+
+
+// %%%%%%%%%%%%%%%%%%%% //
+//   Apertura/Cierre   //
+// %%%%%%%%%%%%%%%%%%%% //
+
 void Files_101::open(char mode){
     ios::openmode m;
     if(mode=='r'){
@@ -82,14 +96,20 @@ void Files_101::open(char mode){
         m = ios::in;
     } else if(mode=='w'){
         m = ios::out | ios::trunc;
+    } else if(mode=='A'){
+        m = ios::out | ios::app;
     } else {
         throw runtime_error("Modo inválido (use 'r' o 'w').");
     }
+
     fs_.open(path_, m);
     if(!fs_) throw runtime_error("No se pudo abrir: " + path_.string());
 
-    // recalcular dimension al abrir lectura
-    if(mode=='r'){
+    // setear flags correctos
+    is_read_mode_  = (mode=='r');
+    is_write_mode_ = (mode=='w' || mode=='A');
+
+    if(mode=='r' || mode=='A'){
         auto lines = readAllLines();
         Dimension_ = (int)lines.size();
     } else {
@@ -99,9 +119,15 @@ void Files_101::open(char mode){
 
 void Files_101::close(){
     if(fs_.is_open()) fs_.close();
+    is_read_mode_ = is_write_mode_ = false;  // importante
 }
 
-// Consultas/atributos
+
+
+// %%%%%%%%%%%%%%%%%%%% //
+//        Métodos       //
+// %%%%%%%%%%%%%%%%%%%% //
+
 bool Files_101::exist() const { return std::filesystem::exists(path_); }
 string Files_101::getNombre() const { return name_ + kExt; }
 string Files_101::getCreationDate() const { return CreationDate_; }
@@ -109,14 +135,16 @@ string Files_101::getOwner() const { return Owner_; }
 int Files_101::getDimension() const { return Dimension_; }
 FileInfo Files_101::getInfo() const { return { getNombre(), getCreationDate(), getOwner(), getDimension() }; }
 
-// Lectura
+// ______ Lectura ______ //
+
 void Files_101::ensureOpenForRead() const {
-    if(!fs_.is_open() || !(fs_.flags() & ios::in)){
+    if(!fs_.is_open() || !is_read_mode_) {
         throw runtime_error("Archivo no abierto para lectura.");
     }
 }
+
 void Files_101::ensureOpenForWrite(){
-    if(!fs_.is_open() || !(fs_.flags() & ios::out)){
+    if(!fs_.is_open() || !is_write_mode_) {
         throw runtime_error("Archivo no abierto para escritura.");
     }
 }
@@ -137,7 +165,8 @@ optional<string> Files_101::getLine(){
     return std::nullopt;
 }
 
-// Escritura
+// _________ Escritura _________ //
+
 string Files_101::joinCSV(const vector<string>& f){
     ostringstream os;
     for(size_t i=0;i<f.size();++i){
@@ -165,7 +194,8 @@ void Files_101::writeParsed(const vector<string>& fields){
     write(joinCSV(fields));
 }
 
-// Formatos de salida
+// _________ Formatos de salida _________ //
+
 vector<string> Files_101::splitCSV(const string& line){
     // split simple que respeta comillas dobles básicas
     vector<string> out;
