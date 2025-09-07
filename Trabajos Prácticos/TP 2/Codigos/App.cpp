@@ -78,6 +78,74 @@ int App::run(int argc, char** argv){
         CLI cli(argc, argv);
         cli.parse();
 
+        if (cli.mode() == Mode::Write) {
+            // 1) Decidir si hay que escribir cabecera
+            bool need_header = true;
+            {
+                Files_101 probe(cli.filename());
+                if (cli.append() && probe.exist()) {
+                    probe.open('r');
+                    need_header = (probe.getDimension() == 0);
+                    probe.close();
+                }
+            }
+
+            // 2) Abrir en 'a' si -A, si no en 'w'
+            Files_101 doc(cli.filename());
+            doc.open(cli.append() ? 'A' : 'w');
+
+            if (need_header) {
+                // Cabecera simple por defecto; cambiala si querés algo más semántico
+                doc.write("Id,%V,Level,Q");
+            }
+
+            // 3) Ingesta de N líneas (desde stdin o pipe)
+            int N = cli.readCount() > 0 ? cli.readCount() : 5;
+            std::string line;
+            for (int i = 0; i < N; ++i) {
+                if (!std::getline(std::cin, line)) break;
+                auto fields = parseToFields(cli.inputFmt(), line);
+                if (fields.empty()) doc.write(line);
+                else                doc.writeParsed(fields);
+            }
+            doc.close();
+
+            // 4) Mostrar metadatos y una vista rápida en CSV
+            doc.open('r');
+            printInfo(doc.getInfo());
+            std::cout << "\n" << doc.getCSV();
+            doc.close();
+            return 0;
+
+        } else { // Mode::Read
+            Files_101 doc(cli.filename());
+            doc.open('r');
+            printInfo(doc.getInfo());
+            std::cout << "\n";
+            switch (cli.outputFmt()) {
+                case OutputFmt::CSV:  std::cout << doc.getCSV();  break;
+                case OutputFmt::JSON: std::cout << doc.getJSON(); break;
+                case OutputFmt::XML:  std::cout << doc.getXML();  break;
+            }
+            doc.close();
+            return 0;
+        }
+
+    } catch (const AppError& e) {
+        std::cerr << "[ERROR] " << e.what() << "\n";
+        return 2;
+    } catch (const std::exception& e) {
+        std::cerr << "[FATAL] " << e.what() << "\n";
+        return 1;
+    }
+}
+
+/*
+int App::run(int argc, char** argv){
+    try{
+        CLI cli(argc, argv);
+        cli.parse();
+
         Files_101 doc(cli.filename());
 
         if(cli.mode()==Mode::Write){
@@ -132,3 +200,4 @@ int App::run(int argc, char** argv){
         return 1;
     }
 }
+*/

@@ -97,9 +97,9 @@ void Files_101::open(char mode){
     } else if(mode=='w'){
         m = ios::out | ios::trunc;
     } else if(mode=='A'){
-        m = ios::out | ios::app;
+        m = std::ios::out | std::ios::app;
     } else {
-        throw runtime_error("Modo inválido (use 'r' o 'w').");
+        throw runtime_error("Modo inválido (use 'r','w' o 'A').");
     }
 
     fs_.open(path_, m);
