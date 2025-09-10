@@ -1,4 +1,5 @@
 Id,%V,Level,Q
+<<<<<<< HEAD
 alto
 59.46
 </registro>
@@ -9,3 +10,25 @@ alto
 alto
 97.66
 </registro>
+=======
+2,33,medio,97.89
+
+2,69,medio,98.57
+
+2,40,alto,43.19
+
+2,77,medio,89.37
+
+2,71,medio,63.61
+
+2,47,medio,7.04
+
+2,72,medio,61.50
+
+2,46,medio,93.62
+
+2,65,medio,77.64
+
+2,80,medio,92.09
+
+>>>>>>> 46247936515697c259e5ef01fc329b8d40adbab0
