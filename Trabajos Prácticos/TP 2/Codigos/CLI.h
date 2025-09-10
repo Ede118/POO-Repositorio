@@ -25,7 +25,7 @@
 */
 
 class AppError : public std::runtime_error {
-public:
+  public:
     using std::runtime_error::runtime_error;
 };
 
@@ -35,31 +35,34 @@ enum class InputFmt { CSV, JSON, XML };
 enum class OutputFmt { CSV, JSON, XML };
 
 class CLI {
-public:
-    // Constructor
-    CLI(int argc, char** argv);
-    void parse(); // lanza AppError si hay incoherencias
+  public:
+      // Constructor
+      CLI(int argc, char** argv);
+      void parse(); // lanza AppError si hay incoherencias
 
-    Mode mode() const;
-    std::string filename() const;    // sin extensión
-    InputFmt inputFmt() const;       // solo si -m w
-    OutputFmt outputFmt() const;     // solo si -m r
-    int readCount() const;           // -n (para escritura)
-    std::string baseDir() const;     // si te dejan override (sino ignorar)
-    bool append() const { return append_; } // si se usa -a (solo escritura)
+      Mode mode() const;
+      std::string filename() const;    // sin extensión
+      InputFmt inputFmt() const;       // solo si -m w
+      OutputFmt outputFmt() const;     // solo si -m r
+      int readCount() const;           // -n (para escritura)
+      std::string baseDir() const;     // si te dejan override (sino ignorar)
+      bool append() const { return append_; } // si se usa -a (solo escritura)
+      bool useSerial() const { return !serialDev_.empty(); } // si se usa -s (solo escritura)
+      std::string serialDev() const { return serialDev_; } // dispositivo serie (solo escritura)
 
-private:
-    // Variables miembro
+  private:
+      // Variables miembro
 
-    int argc_;
-    char** argv_;
-    Mode mode_{Mode::Read};
-    InputFmt in_{InputFmt::CSV};
-    OutputFmt out_{OutputFmt::CSV};
-    std::string file_;
-    std::string dir_;
-    int n_ = 0;
-    bool append_ = false;
+      int argc_;
+      char** argv_;
+      Mode mode_{Mode::Read};
+      InputFmt in_{InputFmt::CSV};
+      OutputFmt out_{OutputFmt::CSV};
+      std::string file_;
+      std::string dir_;
+      int n_ = 0;
+      bool append_ = false;
+      std::string serialDev_; // dispositivo serie (si se usa -s)
 };
 
 #endif // CLI_H

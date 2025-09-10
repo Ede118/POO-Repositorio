@@ -36,6 +36,8 @@ void CLI::parse(){
             dir_ = argv_[++i];
         } else if(std::strcmp(argv_[i],"-A")==0){
             append_ = true;
+        } else if(std::strcmp(argv_[i],"-s")==0 && i+1<argc_){
+            serialDev_ = argv_[++i];
         } else {
             throw AppError(std::string("Opción desconocida: ") + argv_[i]);
         }

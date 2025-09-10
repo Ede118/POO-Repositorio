@@ -5,6 +5,9 @@
 #include <sstream>
 #include <vector>
 #include <cctype>
+#include <chrono>
+#include <thread>
+#include <fstream>
 
 // Parsing mínimo de una línea a campos segun formato de ENTRADA
 static std::vector<std::string> parseToFields(InputFmt fmt, const std::string& line){
@@ -73,61 +76,97 @@ static void printInfo(const FileInfo& info){
 App::App() = default;
 App::~App() = default;
 
+static char fmtChar(InputFmt f){
+    switch(f){
+        case InputFmt::CSV: return 'c';
+        case InputFmt::JSON: return 'j';
+        case InputFmt::XML: return 'x';
+    }
+    return '?';
+}
+
 int App::run(int argc, char** argv){
     try{
         CLI cli(argc, argv);
         cli.parse();
 
-        Files_101 doc(cli.filename());
-
-        if(cli.mode()==Mode::Write){
-            if (cli.mode()==Mode::Write){
-                bool need_header = true;
-
-                // si vamos a agregar y el archivo ya tiene contenido, no escribas cabecera
+        if (cli.mode() == Mode::Write) {
+            // 1) Decidir si hay que escribir cabecera
+            bool need_header = true;
+            {
                 Files_101 probe(cli.filename());
                 if (cli.append() && probe.exist()) {
                     probe.open('r');
-                    need_header = (probe.getDimension()==0);
+                    need_header = (probe.getDimension() == 0);
                     probe.close();
                 }
+            }
+            
+            // 2) Abrir en 'a' si -A, si no en 'w'
+            Files_101 doc(cli.filename());
+            doc.open(cli.append() ? 'A' : 'w');
 
-                // abrir en 'a' si -A, si no 'w'
-                Files_101 doc(cli.filename());
-                doc.open(cli.append() ? 'a' : 'w');
+            if (need_header) {
+                // Cabecera simple por defecto; cambiala si querés algo más semántico
+                doc.write("Id,%V,Level,Q");
+            }
 
-                if (need_header) {
-                    doc.write("c0,c1,c2,c3");
+            // 3) Ingesta de N líneas (desde stdin o pipe)
+            // Defino cantidad de líneas a leer
+
+            int N = cli.readCount() > 0 ? cli.readCount() : 5;
+            std::string line;
+
+            // Inicializo comunicación serie una única vez
+            std::ofstream serial;
+            if(cli.useSerial()){
+                    serial.open(cli.serialDev());
+                    if (cli.serialDev().empty()) throw AppError("No se especificó dispositivo serie.");
+                    // Abrir dispositivo serie
+                    std::ofstream serial(cli.serialDev());
+                    if(!serial) throw AppError("No se pudo abrir el dispositivo serie " + cli.serialDev() + " para escribir.");
                 }
 
-                int N = cli.readCount() > 0 ? cli.readCount() : 5;
-                std::string line;
-                for (int i=0; i<N; ++i){
-                    if(!std::getline(std::cin, line)) break;
-                    auto fields = parseToFields(cli.inputFmt(), line);
-                    if(fields.empty()) doc.write(line);
-                    else               doc.writeParsed(fields);
+            for (int i = 0; i < N; ++i) {
+                if (cli.useSerial()){
+                    serial << fmtChar(cli.inputFmt()) << std::endl;
+                    serial.flush();
+                    // std::this_thread::sleep_for(std::chrono::milliseconds(500)); // esperar un poco a que el otro lado responda                
                 }
-                doc.close();
-            } 
-        } else {
-            // READ
+                
+                // Recibir línea
+                if (!std::getline(std::cin, line)) break;
+                auto fields = parseToFields(cli.inputFmt(), line);
+                if (fields.empty()) doc.write(line);
+                else                doc.writeParsed(fields);
+            }
+            doc.close();
+
+            // 4) Mostrar metadatos y una vista rápida en CSV
+            doc.open('r');
+            printInfo(doc.getInfo());
+            std::cout << "\n" << doc.getCSV();
+            doc.close();
+            return 0;
+
+        } else { // Mode::Read
+            Files_101 doc(cli.filename());
             doc.open('r');
             printInfo(doc.getInfo());
             std::cout << "\n";
-            switch(cli.outputFmt()){
+            switch (cli.outputFmt()) {
                 case OutputFmt::CSV:  std::cout << doc.getCSV();  break;
                 case OutputFmt::JSON: std::cout << doc.getJSON(); break;
                 case OutputFmt::XML:  std::cout << doc.getXML();  break;
             }
             doc.close();
+            return 0;
         }
-        return 0;
 
-    } catch(const AppError& e){
+    } catch (const AppError& e) {
         std::cerr << "[ERROR] " << e.what() << "\n";
         return 2;
-    } catch(const std::exception& e){
+    } catch (const std::exception& e) {
         std::cerr << "[FATAL] " << e.what() << "\n";
         return 1;
     }

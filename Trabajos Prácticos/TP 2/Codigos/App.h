@@ -8,19 +8,18 @@
   * 
   */
 
-class App
-{
-public:
-  // Constructors/Destructors
-  App();
+class App{
+  public:
+    // Constructors/Destructors
+    App();
+    virtual ~App();
 
-  virtual ~App();
+    int run(int argc, char** argv);
 
-  int run(int argc, char** argv);
+  protected:
 
-protected:
-private:
-
+  private:
+    
 };
 
 #endif // APP_H
