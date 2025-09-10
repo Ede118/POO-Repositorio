@@ -94,8 +94,6 @@ int App::run(int argc, char** argv){
             // 1) Decidir si hay que escribir cabecera
             bool need_header = true;
             {
-<<<<<<< HEAD
-=======
                 Files_101 probe(cli.filename());
                 if (cli.append() && probe.exist()) {
                     probe.open('r');
@@ -167,7 +165,6 @@ int App::run(int argc, char** argv){
                 bool need_header = true;
 
                 // si vamos a agregar y el archivo ya tiene contenido, no escribas cabecera
->>>>>>> 46247936515697c259e5ef01fc329b8d40adbab0
                 Files_101 probe(cli.filename());
                 if (cli.append() && probe.exist()) {
                     probe.open('r');
