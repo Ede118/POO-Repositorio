@@ -1,12 +1,15 @@
-CXX=g++
-CXXFLAGS=-std=c++17 -Wall -Wextra -O2
-OBJS=Files_101.o CLI.o App.o main.o
+CXX      := g++
+CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -pedantic
 
-programa: $(OBJS)
-	$(CXX) $(CXXFLAGS) $(OBJS) -o $@
+SRC := main.cpp App.cpp CLI.cpp File.cpp
+HDR := App.h CLI.h File.h Types.h
 
-%.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $<
+TARGET := programa
+
+all: $(TARGET)
+
+$(TARGET): $(SRC) $(HDR)
+	$(CXX) $(CXXFLAGS) -o $@ $(SRC)
 
 clean:
-	rm -f $(OBJS) programa
+	rm -f $(TARGET)

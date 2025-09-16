@@ -1,68 +1,37 @@
-
 #ifndef CLI_H
 #define CLI_H
 
+#include "Types.h"
 #include <string>
-#include <stdexcept>
-
-
-
-/*
-  CLI se encarga de parsear los argumentos de línea de comandos
-  y proveer métodos para acceder a los parámetros.
-
-  En caso de error en los argumentos, lanza AppError
-
-  Uso esperado:
-    programa -m <mode> -f <filename> [ -i <input_format> ] [ -o <output_format> ] [ -n <number> ] [ -d <base_dir> ]
-  donde:
-    - mode: 'r' (read) o 'w' (write)
-    - filename: nombre del archivo (sin extensión)
-    - input_format: 'csv', 'json' o 'xml' (solo si -m w), default 'csv'
-    - output_format: 'csv', 'json' o 'xml' (solo si -m r), default 'csv'
-    - number: cantidad de registros a generar (solo si -m w), default 0 (ilimitado)
-    - base_dir: directorio base para los archivos (default "./data")
-*/
-
-class AppError : public std::runtime_error {
-  public:
-    using std::runtime_error::runtime_error;
-};
-
-// Se definen enums para los modos y formatos
-enum class Mode { Read, Write };
-enum class InputFmt { CSV, JSON, XML };
-enum class OutputFmt { CSV, JSON, XML };
 
 class CLI {
-  public:
-      // Constructor
-      CLI(int argc, char** argv);
-      void parse(); // lanza AppError si hay incoherencias
+public:
+    // parsea argv y completa los campos
+    void parse(int argc, char** argv);
 
-      Mode mode() const {return mode_;};
-      std::string filename() const { return file_;};      // sin extensión
-      InputFmt inputFmt() const {return in_;};            // solo si -m w
-      OutputFmt outputFmt() const {return out_;};         // solo si -m r
-      int readCount() const {return n_;};                 // -n (para escritura)
-      std::string baseDir() const {return dir_;};         // si te dejan override (sino ignorar)
-      bool append() const { return append_; }             // si se usa -a (solo escritura)
-      bool useSerial() const { return !serialDev_.empty(); } // si se usa -s (solo escritura)
-      std::string serialDev() const { return serialDev_; } // dispositivo serie (solo escritura)
+    // getters con nombres del diagrama
+    Mode mode() const { return mode_; }
+    InputFormat inFormat() const { return inFormat_; }
+    OutputFormat outFormat() const { return outFormat_; }
+    std::string fileName() const { return fileName_; }
+    int readCount() const { return readCount_; }
+    bool append() const { return append_; }
+    bool useSerial() const { return useSerial_; }
+    std::string serialDev() const { return serialDev_; }
+    std::string baseDir() const { return baseDir_; }
+    int baud() const { return baud_; }
 
-  private:
-      // Variables miembro
-
-      int argc_;
-      char** argv_;
-      Mode mode_{Mode::Read};
-      InputFmt in_{InputFmt::CSV};
-      OutputFmt out_{OutputFmt::CSV};
-      std::string file_;
-      std::string dir_;
-      int n_ = 0;
-      bool append_ = false;
-      std::string serialDev_; // dispositivo serie (si se usa -s)
+private:
+    Mode mode_ = Mode::Write;
+    InputFormat inFormat_ = InputFormat::CSV;
+    OutputFormat outFormat_ = OutputFormat::CSV;
+    bool useSerial_ = false;
+    std::string serialDev_;
+    int baud_ = 9600;
+    std::string baseDir_ = ".";         // opcional, por si querés prefijo
+    std::string fileName_ = "sensores.csv";
+    int readCount_ = 1;
+    bool append_ = false;
 };
 
 #endif // CLI_H

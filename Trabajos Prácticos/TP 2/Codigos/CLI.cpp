@@ -1,47 +1,54 @@
 #include "CLI.h"
 #include <cstring>
+#include <cstdlib>
 
-static InputFmt parseIn(char c){
-    if(c=='c') return InputFmt::CSV;
-    if(c=='j') return InputFmt::JSON;
-    if(c=='x') return InputFmt::XML;
+static InputFormat parseIn(char c) {
+    if (c=='c') return InputFormat::CSV;
+    if (c=='j') return InputFormat::JSON;
+    if (c=='x') return InputFormat::XML;
     throw AppError("Formato de entrada inválido (use c|j|x).");
 }
-
-static OutputFmt parseOut(char c){
-    if(c=='c') return OutputFmt::CSV;
-    if(c=='j') return OutputFmt::JSON;
-    if(c=='x') return OutputFmt::XML;
+static OutputFormat parseOut(char c) {
+    if (c=='c') return OutputFormat::CSV;
+    if (c=='j') return OutputFormat::JSON;
+    if (c=='x') return OutputFormat::XML;
     throw AppError("Formato de salida inválido (use c|j|x).");
 }
 
-CLI::CLI(int argc, char** argv): argc_(argc), argv_(argv) {}
-
-void CLI::parse(){
-    for(int i=1;i<argc_;++i){
-        if(std::strcmp(argv_[i],"-m")==0 && i+1<argc_){
-            char c = argv_[++i][0];
-            if(c=='r') mode_=Mode::Read;
-            else if(c=='w') mode_=Mode::Write;
-            else throw AppError("Modo inválido (use -m r|w).");
-        } else if(std::strcmp(argv_[i],"-f")==0 && i+1<argc_){
-            file_ = argv_[++i];
-        } else if(std::strcmp(argv_[i],"-i")==0 && i+1<argc_){
-            in_ = parseIn(argv_[++i][0]);
-        } else if(std::strcmp(argv_[i],"-o")==0 && i+1<argc_){
-            out_ = parseOut(argv_[++i][0]);
-        } else if(std::strcmp(argv_[i],"-n")==0 && i+1<argc_){
-            n_ = std::stoi(argv_[++i]);
-        } else if(std::strcmp(argv_[i],"-d")==0 && i+1<argc_){
-            dir_ = argv_[++i];
-        } else if(std::strcmp(argv_[i],"-A")==0){
+void CLI::parse(int argc, char** argv) {
+    for (int i=1; i<argc; ++i) {
+        if (!std::strcmp(argv[i], "-m")) {
+            if (++i>=argc) throw AppError("Falta valor para -m {w|r}.");
+            mode_ = (argv[i][0]=='w') ? Mode::Write : Mode::Read;
+        } else if (!std::strcmp(argv[i], "-i")) {
+            if (++i>=argc) throw AppError("Falta valor para -i {c|j|x}.");
+            inFormat_ = parseIn(argv[i][0]);
+        } else if (!std::strcmp(argv[i], "-o")) {
+            if (++i>=argc) throw AppError("Falta valor para -o {c|j|x}.");
+            outFormat_ = parseOut(argv[i][0]);
+        } else if (!std::strcmp(argv[i], "-f")) {
+            if (++i>=argc) throw AppError("Falta valor para -f <archivo.csv>.");
+            fileName_ = argv[i];
+        } else if (!std::strcmp(argv[i], "-n")) {
+            if (++i>=argc) throw AppError("Falta valor para -n <cantidad>.");
+            readCount_ = std::atoi(argv[i]);
+        } else if (!std::strcmp(argv[i], "-A")) {
             append_ = true;
-        } else if(std::strcmp(argv_[i],"-s")==0 && i+1<argc_){
-            serialDev_ = argv_[++i];
+        } else if (!std::strcmp(argv[i], "-s")) {
+            if (++i>=argc) throw AppError("Falta valor para -s </dev/ttyACM0>.");
+            useSerial_ = true;
+            serialDev_ = argv[i];
+        } else if (!std::strcmp(argv[i], "-b")) {
+            if (++i>=argc) throw AppError("Falta valor para -b <baud>.");
+            baud_ = std::atoi(argv[i]);
+            if (baud_ <= 0) throw AppError("Baud inválido.");
+        } else if (!std::strcmp(argv[i], "-d")) {
+            if (++i>=argc) throw AppError("Falta valor para -d <baseDir>.");
+            baseDir_ = argv[i];
         } else {
-            throw AppError(std::string("Opción desconocida: ") + argv_[i]);
+            throw AppError(std::string("Flag desconocida: ")+argv[i]);
         }
     }
-    if(file_.empty()) throw AppError("Falta nombre de archivo (-f).");
+    if (fileName_.empty()) throw AppError("Falta nombre de archivo base (-f). Ej: -f sensores.csv");
+    if (mode_ == Mode::Write && readCount_ <= 0) readCount_ = 1;
 }
-
