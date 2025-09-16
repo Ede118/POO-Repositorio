@@ -40,13 +40,13 @@ class CLI {
       CLI(int argc, char** argv);
       void parse(); // lanza AppError si hay incoherencias
 
-      Mode mode() const;
-      std::string filename() const;    // sin extensión
-      InputFmt inputFmt() const;       // solo si -m w
-      OutputFmt outputFmt() const;     // solo si -m r
-      int readCount() const;           // -n (para escritura)
-      std::string baseDir() const;     // si te dejan override (sino ignorar)
-      bool append() const { return append_; } // si se usa -a (solo escritura)
+      Mode mode() const {return mode_;};
+      std::string filename() const { return file_;};      // sin extensión
+      InputFmt inputFmt() const {return in_;};            // solo si -m w
+      OutputFmt outputFmt() const {return out_;};         // solo si -m r
+      int readCount() const {return n_;};                 // -n (para escritura)
+      std::string baseDir() const {return dir_;};         // si te dejan override (sino ignorar)
+      bool append() const { return append_; }             // si se usa -a (solo escritura)
       bool useSerial() const { return !serialDev_.empty(); } // si se usa -s (solo escritura)
       std::string serialDev() const { return serialDev_; } // dispositivo serie (solo escritura)
 

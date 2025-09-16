@@ -45,9 +45,3 @@ void CLI::parse(){
     if(file_.empty()) throw AppError("Falta nombre de archivo (-f).");
 }
 
-Mode CLI::mode() const { return mode_; }
-std::string CLI::filename() const { return file_; }
-InputFmt CLI::inputFmt() const { return in_; }
-OutputFmt CLI::outputFmt() const { return out_; }
-int CLI::readCount() const { return n_; }
-std::string CLI::baseDir() const { return dir_; }

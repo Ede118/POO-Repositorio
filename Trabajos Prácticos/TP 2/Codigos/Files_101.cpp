@@ -1,275 +1,253 @@
 #include "Files_101.h"
-#include <chrono>
-#include <iomanip>
-#include <sstream>
-#include <cstdlib>
-#include <stdexcept>
 
-/*
-  chrono: para manejo de fechas/horas
-  iomanip: para std::put_time
-  sstream: para std::stringstream
-  cstdlib: para std::getenv
-  stdexcept: para std::runtime_error
-*/
+#include <sstream>
+#include <iomanip>
+#include <cctype>
+#include <cstdlib>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 
 using namespace std;
 
-/*
-static string pathJoin(const string& a, const string& b){
-    return (std::filesystem::path(a) / b).string();
-}
-*/
-
-string Files_101::sanitize(const string& s){
-    // minimal: quitar espacios de los extremos
-    size_t i = s.find_first_not_of(" \t\r\n");
-    size_t j = s.find_last_not_of(" \t\r\n");
-    if(i==string::npos) return "";
-    return s.substr(i, j-i+1);
+// --------- utilidades ----------
+static inline bool ends_with_csv(const std::string& s){
+    return s.size() >= 4 && s.rfind(".csv") == s.size() - 4;
 }
 
-string Files_101::nowISO8601(){
-    auto now = chrono::system_clock::now();
-    time_t t = chrono::system_clock::to_time_t(now);
-    tm tmv{};
+std::string Files_101::normalize_path_arg(const std::string& base){
+    // recorta espacios y agrega .csv si falta; respeta subcarpetas si las hay
+    std::string n = base;
+    auto l = n.find_first_not_of(" \t\r\n");
+    auto r = n.find_last_not_of(" \t\r\n");
+    if (l == std::string::npos) n.clear();
+    else n = n.substr(l, r - l + 1);
+    if (!ends_with_csv(n)) n += ".csv";
+    return n;
+}
+
+std::string Files_101::now_iso(){
+    using clock = std::chrono::system_clock;
+    auto t  = clock::to_time_t(clock::now());
+    std::tm tm{};
 #ifdef _WIN32
-    localtime_s(&tmv, &t);
+    localtime_s(&tm, &t);
 #else
-    localtime_r(&t, &tmv);
+    localtime_r(&t, &tm);
 #endif
-    stringstream ss; ss<<put_time(&tmv, "%Y-%m-%dT%H:%M:%S");
-    return ss.str();
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
+    return oss.str();
 }
 
-string Files_101::defaultOwner(){
-    const char* u = std::getenv("USER");
-#ifdef _WIN32
-    if(!u) u = std::getenv("USERNAME");
-#endif
-    return u? string(u) : "unknown";
+// ---------------- ctor ----------------
+Files_101::Files_101(const std::string& base){
+    path_ = normalize_path_arg(base);
 }
 
-// %%%%%%%%%%%%%%%%%%%% //
-//    Constructores     //
-// %%%%%%%%%%%%%%%%%%%% //
-
-Files_101::Files_101()
-: name_("noname"), CreationDate_(nowISO8601()), Owner_(defaultOwner()) {
-    std::filesystem::create_directories(kBaseDir);
-    path_ = std::filesystem::path(kBaseDir) / (name_ + kExt);
-}
-
-Files_101::Files_101(const string& name, const string& datetime, const string& owner)
-: name_(sanitize(name)), CreationDate_(sanitize(datetime)), Owner_(sanitize(owner)) {
-    std::filesystem::create_directories(kBaseDir);
-    path_ = std::filesystem::path(kBaseDir) / (name_ + kExt);
-}
-
-Files_101::Files_101(const string& name, const string& datetime)
-: name_(sanitize(name)), CreationDate_(sanitize(datetime)), Owner_(defaultOwner()) {
-    std::filesystem::create_directories(kBaseDir);
-    path_ = std::filesystem::path(kBaseDir) / (name_ + kExt);
-}
-
-Files_101::Files_101(const std::string& name)
-: name_(sanitize(name)), CreationDate_(nowISO8601()), Owner_(defaultOwner()) {
-    std::filesystem::create_directories(kBaseDir);
-    path_ = std::filesystem::path(kBaseDir) / (name_ + kExt);
-}
-
-// %%%%%%%%%%%%%%%%%%%% //
-// ---- Destructor ---- //
-// %%%%%%%%%%%%%%%%%%%% //
-
-Files_101::~Files_101() = default;
-
-
-// %%%%%%%%%%%%%%%%%%%% //
-//   Apertura/Cierre   //
-// %%%%%%%%%%%%%%%%%%%% //
-
+// ------------- abrir/cerrar -----------
 void Files_101::open(char mode){
-    ios::openmode m;
-    if(mode=='r'){
-        if(!exist()) throw runtime_error("Archivo no existe: " + path_.string());
-        m = ios::in;
-    } else if(mode=='w'){
-        m = ios::out | ios::trunc;
-    } else if(mode=='A'){
-        m = std::ios::out | std::ios::app;
-    } else {
-<<<<<<< HEAD
-        throw runtime_error("Modo inválido (use 'r','w' o 'a').");
-=======
-        throw runtime_error("Modo inválido (use 'r','w' o 'A').");
->>>>>>> 46247936515697c259e5ef01fc329b8d40adbab0
+    close();
+    mode_ = mode;
+
+    namespace fsys = std::filesystem;
+
+    if (mode == 'w'){
+        std::error_code ec;
+        fsys::create_directories(fsys::path(path_).parent_path(), ec);
+        fs_.open(path_, std::ios::out | std::ios::trunc);
+        if (!fs_) throw std::runtime_error("No se pudo abrir " + path_ + " para escritura");
+        dimension_ = 0;
+        return;
     }
-
-    fs_.open(path_, m);
-    if(!fs_) throw runtime_error("No se pudo abrir: " + path_.string());
-
-    // setear flags correctos
-    is_read_mode_  = (mode=='r');
-    is_write_mode_ = (mode=='w' || mode=='A');
-
-    if(mode=='r' || mode=='A'){
-        auto lines = readAllLines();
-        Dimension_ = (int)lines.size();
-    } else {
-        Dimension_ = 0;
+    if (mode == 'A'){
+        std::error_code ec;
+        fsys::create_directories(fsys::path(path_).parent_path(), ec);
+        fs_.open(path_, std::ios::out | std::ios::app);
+        if (!fs_) throw std::runtime_error("No se pudo abrir " + path_ + " para append");
+        return;
     }
+    if (mode == 'r'){
+        fs_.open(path_, std::ios::in);            // SOLO lectura
+        if (!fs_) throw std::runtime_error("No se pudo abrir " + path_ + " para lectura");
+        fs_.clear();
+        recount();                                 // cuenta filas de datos
+        return;
+    }
+    throw std::runtime_error("Modo de apertura invalido");
 }
 
 void Files_101::close(){
-    if(fs_.is_open()) fs_.close();
-    is_read_mode_ = is_write_mode_ = false;  // importante
+    if (fs_.is_open()) fs_.close();
+    mode_ = '?';
 }
 
+// ------------- existencia -------------
+bool Files_101::exist() const{
+    std::error_code ec;
+    return std::filesystem::exists(path_, ec);
+}
 
+// -------------- escritura -------------
+void Files_101::write(const std::string& line){
+    if (!fs_.is_open()) throw std::runtime_error("Archivo no abierto para escritura.");
+    fs_ << line << '\n';
+    ++dimension_;
+}
 
-// %%%%%%%%%%%%%%%%%%%% //
-//        Métodos       //
-// %%%%%%%%%%%%%%%%%%%% //
-
-bool Files_101::exist() const { return std::filesystem::exists(path_); }
-string Files_101::getNombre() const { return name_ + kExt; }
-string Files_101::getCreationDate() const { return CreationDate_; }
-string Files_101::getOwner() const { return Owner_; }
-int Files_101::getDimension() const { return Dimension_; }
-FileInfo Files_101::getInfo() const { return { getNombre(), getCreationDate(), getOwner(), getDimension() }; }
-
-// ______ Lectura ______ //
-
-void Files_101::ensureOpenForRead() const {
-    if(!fs_.is_open() || !is_read_mode_) {
-        throw runtime_error("Archivo no abierto para lectura.");
+void Files_101::writeParsed(const std::vector<std::string>& fields){
+    if (!fs_.is_open()) throw std::runtime_error("Archivo no abierto para escritura.");
+    for (size_t i=0;i<fields.size();++i){
+        if (i) fs_ << ',';
+        fs_ << fields[i];
     }
+    fs_ << '\n';
+    ++dimension_;
 }
 
-void Files_101::ensureOpenForWrite(){
-    if(!fs_.is_open() || !is_write_mode_) {
-        throw runtime_error("Archivo no abierto para escritura.");
-    }
-}
-
-vector<string> Files_101::readAllLines() const{
-    ifstream in(path_);
-    vector<string> v; string s;
-    while(getline(in, s)){
-        if(!s.empty()) v.push_back(s);
+// -------------- lectura ----------------
+std::vector<std::string> Files_101::readAllLines() const{
+    std::ifstream in(path_);
+    std::vector<std::string> v; std::string s;
+    while (std::getline(in, s)){
+        chop_cr_(s);
+        if (!s.empty()) v.push_back(s);  // si querés conservar vacías, quitá este if
     }
     return v;
 }
 
-optional<string> Files_101::getLine(){
+void Files_101::ensureOpenForRead(){
+    if (!fs_.is_open() || mode_ != 'r')
+        throw std::runtime_error("Stream no abierto en modo lectura.");
+}
+
+std::optional<std::string> Files_101::getLine(){
     ensureOpenForRead();
-    string s;
-    if(std::getline(fs_, s)) return s;
+    std::string s;
+    if (std::getline(fs_, s)) {
+        chop_cr_(s);
+        if (s.empty()) return std::nullopt; // opcional: saltear vacías
+        return s;
+    }
     return std::nullopt;
 }
 
-// _________ Escritura _________ //
-
-string Files_101::joinCSV(const vector<string>& f){
-    ostringstream os;
-    for(size_t i=0;i<f.size();++i){
-        if(i) os<<",";
-        // escape mínimo: si hay coma o comillas, envolver
-        bool needQuote = (f[i].find(',')!=string::npos) || (f[i].find('"')!=string::npos);
-        if(needQuote){
-            os<<'"';
-            for(char c: f[i]) os << (c=='"'? "\"\"" : string(1,c));
-            os<<'"';
-        } else {
-            os<<f[i];
-        }
-    }
-    return os.str();
-}
-
-void Files_101::write(const string& raw){
-    ensureOpenForWrite();
-    fs_ << raw << "\n";
-    ++Dimension_;
-}
-
-void Files_101::writeParsed(const vector<string>& fields){
-    write(joinCSV(fields));
-}
-
-// _________ Formatos de salida _________ //
-
-vector<string> Files_101::splitCSV(const string& line){
-    // split simple que respeta comillas dobles básicas
-    vector<string> out;
-    string cur; bool inq=false;
-    for(size_t i=0;i<line.size();++i){
-        char ch=line[i];
-        if(ch=='"'){
-            inq = !inq;
-        } else if(ch==',' && !inq){
-            out.push_back(cur); cur.clear();
-        } else {
-            cur.push_back(ch);
-        }
+// --------- helpers CSV -------------
+std::vector<std::string> Files_101::splitCSV_(const std::string& line){
+    std::vector<std::string> out;
+    std::string cur; bool inq=false;
+    for(char ch: line){
+        if (ch=='"'){ inq=!inq; continue; }
+        if (ch==',' && !inq){ out.push_back(cur); cur.clear(); }
+        else cur.push_back(ch);
     }
     out.push_back(cur);
     return out;
 }
 
-string Files_101::toJSON(const vector<string>& headers,
-                         const vector<vector<string>>& rows){
-    ostringstream os;
-    os<<"[\n";
-    for(size_t r=0;r<rows.size();++r){
-        os<<"  {";
-        for(size_t c=0;c<headers.size() && c<rows[r].size();++c){
-            if(c) os<<", ";
-            os<<"\""<<headers[c]<<"\": \""<<rows[r][c]<<"\"";
-        }
-        os<<"}"<<(r+1<rows.size()? ",":"")<<"\n";
+// --------- recuento para -m r -------
+std::size_t Files_101::recount(){
+    std::ifstream in(path_);
+    if (!in) { dimension_ = 0; return 0; }
+
+    std::string s;
+    std::size_t count = 0;
+    bool header_skipped = false;
+
+    while (std::getline(in, s)) {
+        chop_cr_(s);
+        if (s.empty()) continue;
+        if (!header_skipped) { header_skipped = true; continue; } // saltea cabecera
+        ++count;
     }
-    os<<"]\n";
-    return os.str();
+    dimension_ = count;
+    return count;
 }
 
-string Files_101::toXML(const vector<string>& headers,
-                        const vector<vector<string>>& rows){
-    ostringstream os;
-    os<<"<root>\n";
-    for(const auto& row: rows){
-        os<<"  <row>";
-        for(size_t c=0;c<headers.size() && c<row.size();++c){
-            os<<"<"<<headers[c]<<">"<<row[c]<<"</"<<headers[c]<<">";
-        }
-        os<<"</row>\n";
+// -------- getters formateados --------
+std::string Files_101::getCSV(){
+    std::ifstream in(path_, std::ios::in);
+    if (!in) return "";
+
+    std::ostringstream oss;
+    std::string s;
+    bool first = true;
+
+    while (std::getline(in, s)) {
+        chop_cr_(s);
+        if (!first) { oss << '\n'; }
+        first = false;
+        oss << s;
     }
-    os<<"</root>\n";
-    return os.str();
+    return oss.str();
 }
 
-string Files_101::getCSV() const{
+std::string Files_101::getJSON(){
     auto lines = readAllLines();
-    ostringstream os;
-    for(auto& s: lines) os<<s<<"\n";
-    return os.str();
+    if (lines.empty()) return "[]";
+
+    auto headers = splitCSV_(lines.front());
+    std::ostringstream out;
+    out << "[";
+
+    bool first_row = true;
+    for (size_t i=1;i<lines.size();++i){
+        auto row = splitCSV_(lines[i]);
+        if (row.size() < headers.size()) row.resize(headers.size());
+
+        bool all_empty = true;
+        for (auto& v: row) if (!v.empty()) { all_empty=false; break; }
+        if (all_empty) continue;
+
+        if (!first_row) out << ",\n";
+        first_row = false;
+
+        out << "{";
+        for (size_t c=0;c<headers.size();++c){
+            if (c) out << ",";
+            out << "\"" << headers[c] << "\": ";
+            if (looks_number_(row[c])) out << row[c];
+            else out << "\"" << row[c] << "\"";
+        }
+        out << "}";
+    }
+    out << "]";
+    return out.str();
 }
 
-string Files_101::getJSON() const{
+std::string Files_101::getXML(){
     auto lines = readAllLines();
-    if(lines.empty()) return "[]\n";
-    auto headers = splitCSV(lines.front());
-    vector<vector<string>> rows;
-    for(size_t i=1;i<lines.size();++i) rows.push_back(splitCSV(lines[i]));
-    return toJSON(headers, rows);
+    if (lines.empty()) return "<root/>";
+
+    auto headers = splitCSV_(lines.front());
+    std::ostringstream out;
+    out << "<root>";
+    for (size_t i=1;i<lines.size();++i){
+        auto row = splitCSV_(lines[i]);
+        if (row.size() < headers.size()) row.resize(headers.size());
+
+        bool all_empty = true;
+        for (auto& v: row) if (!v.empty()) { all_empty=false; break; }
+        if (all_empty) continue;
+
+        out << "<row>";
+        for (size_t c=0;c<headers.size();++c){
+            out << "<" << headers[c] << ">" << row[c] << "</" << headers[c] << ">";
+        }
+        out << "</row>";
+    }
+    out << "</root>";
+    return out.str();
 }
 
-string Files_101::getXML() const{
-    auto lines = readAllLines();
-    if(lines.empty()) return "<root/>\n";
-    auto headers = splitCSV(lines.front());
-    vector<vector<string>> rows;
-    for(size_t i=1;i<lines.size();++i) rows.push_back(splitCSV(lines[i]));
-    return toXML(headers, rows);
+// --------------- info ----------------
+FileInfo Files_101::getInfo() const{
+    FileInfo info;
+    auto pos = path_.find_last_of("/\\");
+    info.name = (pos == std::string::npos) ? path_ : path_.substr(pos+1);
+    info.datetime  = now_iso();
+    const char* u  = std::getenv("USER");
+    info.owner     = u ? u : "unknown";
+    info.dimension = dimension_;
+    return info;
 }

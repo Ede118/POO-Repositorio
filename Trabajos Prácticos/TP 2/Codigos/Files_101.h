@@ -4,102 +4,71 @@
 
 #include <string>
 #include <vector>
-#include <optional>
-#include <filesystem>
 #include <fstream>
+#include <optional>
 
-/*
-  No se llama el name space std
-  Para usar 'string', 'vector', 'optional', 'ifstream', etc
-  se debe anteponer 'std::'
-  Ejemplo: std::string, std::vector, std::optional, std::ifstream
-*/
-
+// Info para modo lectura
 struct FileInfo {
-  std::string name;
-  std::string datetime;
-  std::string owner;
-  int dimension;
+    std::string name;       // nombre del archivo (sin ruta)
+    std::string datetime;   // timestamp ISO
+    std::string owner;      // $USER
+    std::size_t dimension;  // filas de datos (excluye cabecera)
 };
-
-/**
-  * class Files_101
-  * 
-  */
 
 class Files_101 {
-  public:
-    // Constructors
-    Files_101();
-    Files_101(const std::string& name, const std::string& datetime, const std::string& owner); // completo
-    Files_101(const std::string& name, const std::string& datetime);
-    Files_101(const std::string& name); // mínimo
+public:
+    explicit Files_101(const std::string& base);  // "x", "x.csv" o "carpeta/x(.csv)"
+    ~Files_101() = default;
 
-    // Destructor
-    virtual ~Files_101();
-    
-    //------- Métodos ------- //
-    
-    // Apertura/cierre
-    void open(char mode); // 'r' lectura, 'w' escritura (trunca) o 'A' (append)
+    // Abrir/cerrar: 'w' (trunc), 'A' (append), 'r' (read)
+    void open(char mode);
     void close();
-
-    // Consultas/atributos
     bool exist() const;
-    std::string getNombre() const;
-    std::string getCreationDate() const;
-    std::string getOwner() const;
-    int getDimension() const;
-    FileInfo getInfo() const;
-
-    // Lectura
-    std::optional<std::string> getLine(); // lectura secuencial
-    std::string getCSV() const;
-    std::string getJSON() const;
-    std::string getXML() const;
 
     // Escritura
-    void write(const std::string& rawLine);                       // escribe tal cual
-    void writeParsed(const std::vector<std::string>& fields);     // escribe vector -> CSV
+    void write(const std::string& line);
+    void writeParsed(const std::vector<std::string>& fields);
 
-    // Fijos por código (consigna)
-    static constexpr const char* kBaseDir = "./data";
-    static constexpr const char* kExt = ".csv";
-
-  private:
-    // ---- Propiedades ---- //
-    // (nombre, creationdate, owner, dimension, path, fstream)
-    std::string name_;
-    std::string CreationDate_;
-    std::string Owner_;
-    int Dimension_ = 0;
-
-    /* 
-    Se usa filesystem para manejar paths
-    Paths es una clase que maneja rutas de archivos
-    */
-    std::filesystem::path path_;
-    mutable std::fstream fs_;
-    
-    bool is_read_mode_ = false;
-    bool is_write_mode_ = false;
-
-    // ---- Métodos privados ---- //
-    static std::string nowISO8601();
-    static std::string defaultOwner();
-    static std::string sanitize(const std::string& s);
-
-    void ensureOpenForRead() const;
-    void ensureOpenForWrite();
+    // Lectura “de una”
     std::vector<std::string> readAllLines() const;
 
-    static std::string joinCSV(const std::vector<std::string>& fields);
-    static std::vector<std::string> splitCSV(const std::string& line);
+    // Lectura incremental con fs_ en 'r'
+    std::optional<std::string> getLine();
 
-    static std::string toJSON(const std::vector<std::string>& headers,
-                              const std::vector<std::vector<std::string>>& rows);
-    static std::string toXML(const std::vector<std::string>& headers,
-                             const std::vector<std::vector<std::string>>& rows);
+    // Salidas para -m r (leen desde disco, NO usan fs_)
+    std::string getCSV();
+    std::string getJSON();
+    std::string getXML();
+
+    // Metadata
+    FileInfo getInfo() const;
+    std::size_t getDimension() const { return dimension_; }
+    std::string getPath() const { return path_; }
+
+private:
+    void ensureOpenForRead();
+    std::size_t recount();  // cuenta filas reales (excluye cabecera) al abrir 'r'
+
+    // Helpers CSV y strings
+    static std::vector<std::string> splitCSV_(const std::string& line);
+    static inline void chop_cr_(std::string& s){
+        if (!s.empty() && s.back()=='\r') s.pop_back();
+    }
+    static inline bool looks_number_(const std::string& v){
+        if (v.empty()) return false;
+        for(char c: v){
+            if (!(std::isdigit((unsigned char)c) || c=='.' || c=='-' )) return false;
+        }
+        return true;
+    }
+    static std::string now_iso();
+    static std::string normalize_path_arg(const std::string& base); // agrega .csv si falta
+
+private:
+    std::string  path_;
+    std::fstream fs_;
+    char         mode_ {'?'};
+    std::size_t  dimension_ {0};
 };
 
-#endif // FILES_101_H
+#endif
