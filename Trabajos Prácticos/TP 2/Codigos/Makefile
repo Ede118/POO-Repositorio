@@ -1,10 +1,10 @@
 CXX      := g++
 CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -pedantic
 
-SRC := main.cpp App.cpp CLI.cpp File.cpp
-HDR := App.h CLI.h File.h Types.h
+SRC := main.cpp App.cpp CLI.cpp File.cpp serial.cpp
+HDR := App.h CLI.h File.h Types.h serial.h
 
-TARGET := programa
+TARGET := app
 
 all: $(TARGET)
 

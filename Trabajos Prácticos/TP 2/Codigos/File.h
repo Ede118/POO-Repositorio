@@ -1,34 +1,51 @@
 #ifndef FILE_H
 #define FILE_H
 
+#include "Types.h"
 #include <string>
 #include <vector>
+#include <fstream>
 
-class File {
-public:
-    explicit File(std::string path);
-
-    // Aperturas y chequeos básicos
-    bool exists() const;
-    bool hasHeader() const;                  // true si primera línea parece cabecera
-    void ensureHeader(const std::vector<std::string>& header);
-
-    // Escritura y lectura en CSV (persistencia SIEMPRE CSV)
-    void appendCSVLine(const std::vector<std::string>& cols);   // agrega fila
-    std::vector<std::string> readAllLines() const;              // sin la cabecera si querés, después vemos
-    std::vector<std::string> readAllLinesWithHeader() const;    // incluye cabecera (posición 0)
-
-    // Helpers CSV <-> vector
-    static std::string joinCSV(const std::vector<std::string>& cols);
-    static std::vector<std::string> splitCSV(const std::string& line);
-
-    // Conversión: toma todas las filas y emite en formato pedido
-    static std::string toCSV(const std::vector<std::string>& lines);
-    static std::string toJSON(const std::vector<std::string>& lines); // lines[0] = header
-    static std::string toXML (const std::vector<std::string>& lines); // lines[0] = header
-
-private:
-    std::string path_;
+struct FileInfo {
+    std::string name;
+    std::string creationDateTime;
+    std::string owner;
+    size_t      dimension = 0; // líneas de datos
 };
 
-#endif // FILE_H
+class File {
+    bool      m_read  = false;
+    bool      m_write = false;
+    FileInfo  m_info;
+    std::fstream m_fs;
+
+public:
+    File() = default;
+    explicit File(const std::string& path);
+
+    bool open(char mode); // 'r' o 'w' o 'a'
+    void close();
+
+    const FileInfo& info() const { return m_info; }
+    std::string     getInfoTable() const;
+
+    // Escritura
+    void writeRaw(const std::string& line);                 // escribe tal cual (CSV ya formateado)
+    void writeParsed(const std::vector<std::string>& fields); // une por coma
+
+    // Lectura
+    bool   getLine(std::string& out);
+    std::string readAll(); // contenido CSV completo (sin cabecera especial)
+    std::vector<std::vector<std::string>> readAllRows();
+
+    // Presentación (a partir del CSV)
+    std::string toCSV();                                   // igual al archivo
+    std::string toJSON(const std::vector<std::string>& headers);
+    std::string toXML (const std::vector<std::string>& headers);
+
+    // Utilidad
+    static std::vector<std::string> splitCSV(const std::string& line);
+    void writeHeaderTag(const std::vector<std::string>& headers);
+};
+
+#endif

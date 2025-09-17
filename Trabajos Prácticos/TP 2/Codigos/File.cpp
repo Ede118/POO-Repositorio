@@ -1,153 +1,272 @@
 #include "File.h"
 #include "Types.h"
-#include <filesystem>
-#include <fstream>
+#include <ctime>
 #include <sstream>
+#include <iomanip>
+#include <cstdlib>
+#include <sys/stat.h>
 #include <algorithm>
-#include <cctype>
 
-using std::string;
-using std::vector;
 
-File::File(std::string path) : path_(std::move(path)) {}
 
-bool File::exists() const {
-    namespace fs = std::filesystem;
-    std::error_code ec;
-    return fs::exists(path_, ec) && !fs::is_directory(path_, ec);
-}
+// ========================= Paseo ========================= //
 
-bool File::hasHeader() const {
-    std::ifstream in(path_);
-    string first;
-    if (!in.good()) return false;
-    if (!std::getline(in, first)) return false;
-    // Heurística mínima: si tiene comas y no arranca con dígito, lo tomamos como cabecera
-    return !first.empty() && first.find(',')!=string::npos && !std::isdigit(static_cast<unsigned char>(first[0]));
-}
-
-void File::ensureHeader(const vector<string>& header) {
-    if (exists() && hasHeader()) return;
-    std::ofstream out(path_, std::ios::app);
-    if (!out) throw AppError("No se pudo abrir CSV para cabecera: " + path_);
-    out << joinCSV(header) << '\n';
-}
-
-void File::appendCSVLine(const vector<string>& cols) {
-    std::ofstream out(path_, std::ios::app);
-    if (!out) throw AppError("No se pudo abrir CSV para escribir: " + path_);
-    out << joinCSV(cols) << '\n';
-}
-
-vector<string> File::readAllLines() const {
-    std::ifstream in(path_);
-    if (!in) throw AppError("No se pudo abrir CSV para leer: " + path_);
-    vector<string> lines;
-    string line;
-    // saltar cabecera si existe
-    if (hasHeader()) std::getline(in, line);
-    while (std::getline(in, line)) {
-        if (!line.empty() && line.back()=='\r') line.pop_back();
-        if (!line.empty()) lines.push_back(line);
+bool tryParseHeaderTag(const std::string& line, std::vector<std::string>& headers) {
+    // Convención opcional: si el µC manda "#h: a,b,c" esto define encabezados.
+    if (line.rfind("#h:", 0) == 0) {
+        std::string rest = line.substr(3);
+        std::stringstream ss(rest);
+        std::string item;
+        headers.clear();
+        while (std::getline(ss, item, ',')) {
+            // trim básico
+            item.erase(item.begin(), std::find_if(item.begin(), item.end(), [](unsigned char ch){return !std::isspace(ch);} ));
+            item.erase(std::find_if(item.rbegin(), item.rend(), [](unsigned char ch){return !std::isspace(ch);} ).base(), item.end());
+            headers.push_back(item);
+        }
+        return true;
     }
-    return lines;
+    return false;
 }
 
-vector<string> File::readAllLinesWithHeader() const {
-    std::ifstream in(path_);
-    if (!in) throw AppError("No se pudo abrir CSV para leer: " + path_);
-    vector<string> lines;
-    string line;
-    while (std::getline(in, line)) {
-        if (!line.empty() && line.back()=='\r') line.pop_back();
-        lines.push_back(line);
-    }
-    return lines;
-}
-
-string File::joinCSV(const vector<string>& cols) {
-    std::ostringstream o;
-    for (size_t i=0;i<cols.size();++i) {
-        if (i) o << ',';
-        // no escapo comillas para mantenerlo simple; tu micro ya no manda comas en números
-        o << cols[i];
-    }
-    return o.str();
-}
-
-vector<string> File::splitCSV(const string& line) {
-    vector<string> out;
-    std::istringstream is(line);
-    string field;
-    while (std::getline(is, field, ',')) out.push_back(field);
+static std::vector<std::string> splitCSVsimple(const std::string& line) {
+    // versión simplificada para entradas del µC (sin comillas escapadas)
+    std::vector<std::string> out;
+    std::stringstream ss(line); std::string token;
+    while (std::getline(ss, token, ',')) out.push_back(token);
     return out;
 }
 
-static string jsonEscape(const string& s){
-    string r; r.reserve(s.size());
-    for(char c: s){
-        switch(c){
-            case '\"': r += "\\\""; break;
-            case '\\': r += "\\\\"; break;
-            case '\b': r += "\\b";  break;
-            case '\f': r += "\\f";  break;
-            case '\n': r += "\\n";  break;
-            case '\r': r += "\\r";  break;
-            case '\t': r += "\\t";  break;
-            default:   r += c;      break;
+std::vector<std::string> parseLine(IOFormat inFmt, const std::string& line,
+                                   std::vector<std::string>* headersOpt) {
+    if (inFmt == IOFormat::CSV) {
+        return splitCSVsimple(line);
+    } else if (inFmt == IOFormat::JSON) {
+        // Parseo mínimo: {"a":1,"b":2} => ["1","2"] respetando el orden de headersOpt si existe
+        std::vector<std::string> values;
+        if (headersOpt && !headersOpt->empty()) {
+            for (auto& k : *headersOpt) {
+                auto pos = line.find('\"' + k + '\"');
+                if (pos == std::string::npos) { values.push_back(""); continue; }
+                pos = line.find(':', pos);
+                if (pos == std::string::npos) { values.push_back(""); continue; }
+                auto end = line.find_first_of(",}", pos+1);
+                std::string v = line.substr(pos+1, end-pos-1);
+                // limpio comillas y espacios
+                v.erase(remove_if(v.begin(), v.end(), [](unsigned char c){return c=='\"' || std::isspace(c);}), v.end());
+                values.push_back(v);
+            }
+            return values;
+        } else {
+            // sin headers: sacamos valores en orden de aparición
+            std::vector<std::string> tmp;
+            size_t pos = 0;
+            while ((pos = line.find(':', pos)) != std::string::npos) {
+                auto end = line.find_first_of(",}", pos+1);
+                std::string v = line.substr(pos+1, end-pos-1);
+                v.erase(remove_if(v.begin(), v.end(), [](unsigned char c){return c=='\"' || std::isspace(c);}), v.end());
+                tmp.push_back(v);
+                pos = end;
+            }
+            return tmp;
+        }
+    } else {
+        // XML: <row><a>1</a><b>2</b></row>
+        std::vector<std::string> values;
+        if (headersOpt && !headersOpt->empty()) {
+            for (auto& k : *headersOpt) {
+                std::string open = "<" + k + ">";
+                std::string close = "</" + k + ">";
+                auto p1 = line.find(open);
+                auto p2 = line.find(close);
+                if (p1 == std::string::npos || p2 == std::string::npos || p2 < p1) { values.push_back(""); continue; }
+                values.push_back(line.substr(p1+open.size(), p2-(p1+open.size())));
+            }
+            return values;
+        } else {
+            // sin headers: extraemos todo lo que esté entre <>
+            size_t pos = 0;
+            while (true) {
+                auto p1 = line.find('<', pos);
+                if (p1 == std::string::npos) break;
+                if (line[p1+1] == '/') { pos = p1+1; continue; }
+                auto p2 = line.find('>', p1+1);
+                auto p3 = line.find("</", p2+1);
+                if (p2==std::string::npos || p3==std::string::npos) break;
+                values.push_back(line.substr(p2+1, p3-(p2+1)));
+                pos = p3+2;
+            }
+            return values;
         }
     }
-    return r;
 }
 
-std::string File::toCSV(const vector<string>& lines){
-    std::ostringstream o;
-    for (auto& ln: lines) o << ln << '\n';
-    return o.str();
+
+
+
+// ========================= File ========================= //
+
+static std::string nowStr() {
+    std::time_t t = std::time(nullptr);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &t);
+#else
+    tm = *std::localtime(&t);
+#endif
+    std::ostringstream os;
+    os << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+    return os.str();
 }
 
-std::string File::toJSON(const vector<string>& lines){
-    if (lines.empty()) return "[]";
-    auto header = splitCSV(lines.front());
-    std::ostringstream o;
-    o << "[";
-    for (size_t i=1;i<lines.size();++i){
-        auto cols = splitCSV(lines[i]);
-        o << "{";
-        for (size_t j=0;j<header.size();++j){
-            if (j) o << ",";
-            std::string key = header[j];
-            std::string val = j < cols.size() ? cols[j] : "";
-            o << "\"" << jsonEscape(key) << "\":";
-            // si parece número, no va entre comillas
-            bool numeric = !val.empty() && std::find_if(val.begin(), val.end(), [](unsigned char ch){
-                return !(std::isdigit(ch) || ch=='.' || ch=='-' || ch=='+');
-            })==val.end();
-            if (numeric) o << val;
-            else o << "\"" << jsonEscape(val) << "\"";
-        }
-        o << "}";
-        if (i+1<lines.size()) o << ",";
+File::File(const std::string& path) {
+    m_info.name = path;
+}
+
+bool File::open(char mode) {
+    std::ios::openmode m{};
+    if (mode=='r') { m = std::ios::in;                m_read=true;  m_write=false; }
+    else if (mode=='w'){ m = std::ios::out|std::ios::trunc; m_read=false; m_write=true;  }
+    else if (mode=='a'){ m = std::ios::out|std::ios::app;   m_read=false; m_write=true;  }
+    else throw AppError("Modo de apertura inválido (r|w|a).");
+
+    m_fs.open(m_info.name, m);
+    if (!m_fs) throw AppError("No se pudo abrir: " + m_info.name);
+
+    // info mínima
+    const char* user = std::getenv("USER");
+    m_info.owner = user ? user : "unknown";
+    m_info.creationDateTime = nowStr();
+    m_info.dimension = 0;
+
+    return true;
+}
+
+void File::close() {
+    if (m_fs.is_open()) m_fs.close();
+}
+
+std::string File::getInfoTable() const {
+    std::ostringstream os;
+    os << "Nombre       : " << m_info.name << "\n"
+       << "Creación     : " << m_info.creationDateTime << "\n"
+       << "Owner        : " << m_info.owner << "\n"
+       << "Dimensión    : " << m_info.dimension << " lineas\n";
+    return os.str();
+}
+
+void File::writeRaw(const std::string& line) {
+    if (!m_write) throw AppError("Archivo no abierto para escritura.");
+    m_fs << line << "\n";
+    if (!m_fs) throw AppError("Fallo escribiendo en archivo.");
+    ++m_info.dimension;
+}
+
+void File::writeParsed(const std::vector<std::string>& fields) {
+    std::ostringstream os;
+    for (size_t i=0;i<fields.size();++i) {
+        if (i) os << ',';
+        // escapado mínimo
+        bool needQuote = fields[i].find_first_of(",\"\n") != std::string::npos;
+        if (needQuote) {
+            os << '"';
+            for (char c: fields[i]) {
+                if (c=='"') os << "\"\"";
+                else os << c;
+            }
+            os << '"';
+        } else os << fields[i];
     }
-    o << "]";
-    return o.str();
+    writeRaw(os.str());
 }
 
-std::string File::toXML(const vector<string>& lines){
-    if (lines.empty()) return "<rows/>";
-    auto header = splitCSV(lines.front());
-    std::ostringstream o;
-    o << "<rows>";
-    for (size_t i=1;i<lines.size();++i){
-        auto cols = splitCSV(lines[i]);
-        o << "<row>";
-        for (size_t j=0;j<header.size();++j){
-            std::string key = header[j];
-            std::string val = j < cols.size() ? cols[j] : "";
-            o << "<" << key << ">" << val << "</" << key << ">";
-        }
-        o << "</row>";
-    }
-    o << "</rows>";
-    return o.str();
+bool File::getLine(std::string& out) {
+    if (!m_read) throw AppError("Archivo no abierto para lectura.");
+    return static_cast<bool>(std::getline(m_fs, out));
 }
+
+std::string File::readAll() {
+    if (!m_read) throw AppError("Archivo no abierto para lectura.");
+    std::ostringstream os;
+    m_fs.clear(); m_fs.seekg(0);
+    os << m_fs.rdbuf();
+    return os.str();
+}
+
+std::vector<std::vector<std::string>> File::readAllRows() {
+    if (!m_read) throw AppError("Archivo no abierto para lectura.");
+    m_fs.clear(); m_fs.seekg(0);
+    std::vector<std::vector<std::string>> rows;
+    std::string line;
+    while (std::getline(m_fs, line)) {
+        if (!line.empty() && line[0] == '#') continue; // <— ignora cabeceras/comentarios
+        rows.push_back(splitCSV(line));
+    }
+    return rows;
+}
+
+std::string File::toCSV() { return readAll(); }
+
+std::string File::toJSON(const std::vector<std::string>& headers) {
+    auto rows = readAllRows();
+    std::ostringstream os;
+    os << "[\n";
+    for (size_t r=0;r<rows.size();++r) {
+        os << "  {";
+        for (size_t c=0;c<rows[r].size() && c<headers.size();++c) {
+            if (c) os << ", ";
+            os << '"' << headers[c] << "\": \"" << rows[r][c] << '"';
+        }
+        os << "}";
+        if (r+1<rows.size()) os << ",";
+        os << "\n";
+    }
+    os << "]\n";
+    return os.str();
+}
+
+std::string File::toXML(const std::vector<std::string>& headers) {
+    auto rows = readAllRows();
+    std::ostringstream os;
+    os << "<rows>\n";
+    for (const auto& row : rows) {
+        os << "  <row>";
+        for (size_t c=0;c<row.size() && c<headers.size();++c) {
+            os << "<" << headers[c] << ">" << row[c] << "</" << headers[c] << ">";
+        }
+        os << "</row>\n";
+    }
+    os << "</rows>\n";
+    return os.str();
+}
+
+std::vector<std::string> File::splitCSV(const std::string& line) {
+    std::vector<std::string> out;
+    std::string cur; bool inq=false;
+    for (size_t i=0;i<line.size();++i) {
+        char ch = line[i];
+        if (inq) {
+            if (ch=='"' && i+1<line.size() && line[i+1]=='"') { cur.push_back('"'); ++i; }
+            else if (ch=='"') inq=false;
+            else cur.push_back(ch);
+        } else {
+            if (ch==',') { out.push_back(cur); cur.clear(); }
+            else if (ch=='"') inq=true;
+            else cur.push_back(ch);
+        }
+    }
+    out.push_back(cur);
+    return out;
+}
+
+void File::writeHeaderTag(const std::vector<std::string>& headers) {
+    if (!m_write) throw AppError("Archivo no abierto para escritura.");
+    m_fs << "#h: ";
+    for (size_t i=0;i<headers.size();++i) {
+        if (i) m_fs << ',';
+        m_fs << headers[i];
+    }
+    m_fs << "\n";
+    // NO incrementamos dimension; es metadata
+}
+
