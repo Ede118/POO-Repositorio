@@ -6,8 +6,8 @@
 void CLI::parse(int argc, char** argv) {
     // Opciones:
     // -m r|w
-    // -i x|j|c  (solo write)
-    // -o x|j|c  (solo read)
+    // -i c|j|x  (solo write)
+    // -o c|j|x  (solo read)
     // -n N      (cantidad de lecturas/pedidos en write; en read se ignora)
     // -s /dev/ttyACM0 (opcional)
     // -d baseDir
@@ -39,8 +39,8 @@ void CLI::parse(int argc, char** argv) {
             std::cout <<
             "Uso:\n"
             "  -m r|w           Modo lectura/escritura\n"
-            "  -i x|j|c         Formato de entrada (write)\n"
-            "  -o x|j|c         Formato de salida (read)\n"
+            "  -i c|j|x         Formato de entrada (write)\n"
+            "  -o c|j|x         Formato de salida (read)\n"
             "  -n N             Cantidad de pedidos/lecturas (write)\n"
             "  -s DEV           Dispositivo serie (opcional)\n"
             "  -d DIR           Directorio base (default '.')\n"

@@ -5,6 +5,10 @@
 #include <iomanip>
 #include <cstdlib>
 #include <sys/stat.h>
+#include <unistd.h>
+#include <pwd.h>
+#include <filesystem>
+#include <system_error>
 #include <algorithm>
 
 
@@ -106,17 +110,37 @@ std::vector<std::string> parseLine(IOFormat inFmt, const std::string& line,
 
 // ========================= File ========================= //
 
-static std::string nowStr() {
-    std::time_t t = std::time(nullptr);
+static std::string formatTime(std::time_t t) {
     std::tm tm{};
 #ifdef _WIN32
     localtime_s(&tm, &t);
 #else
-    tm = *std::localtime(&t);
+    localtime_r(&t, &tm);
 #endif
     std::ostringstream os;
     os << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
     return os.str();
+}
+
+static std::string nowStr() {
+    return formatTime(std::time(nullptr));
+}
+
+static std::string ownerFromUid(uid_t uid) {
+    if (passwd* pw = getpwuid(uid)) return pw->pw_name ? pw->pw_name : "unknown";
+    return "unknown";
+}
+
+static std::string fileOwner(const std::string& path) {
+    struct stat st{};
+    if (::stat(path.c_str(), &st) == 0) return ownerFromUid(st.st_uid);
+    return ownerFromUid(getuid());
+}
+
+static std::string fileTimestamp(const std::string& path) {
+    struct stat st{};
+    if (::stat(path.c_str(), &st) == 0) return formatTime(st.st_mtime);
+    return nowStr();
 }
 
 File::File(const std::string& path) {
@@ -124,26 +148,58 @@ File::File(const std::string& path) {
 }
 
 bool File::open(char mode) {
+    if (m_info.name.empty()) throw AppError("Ruta de archivo vacía.");
+
     std::ios::openmode m{};
-    if (mode=='r') { m = std::ios::in;                m_read=true;  m_write=false; }
-    else if (mode=='w'){ m = std::ios::out|std::ios::trunc; m_read=false; m_write=true;  }
-    else if (mode=='a'){ m = std::ios::out|std::ios::app;   m_read=false; m_write=true;  }
-    else throw AppError("Modo de apertura inválido (r|w|a).");
+    if (mode == 'r') {
+        m = std::ios::in;
+        m_read = true;
+        m_write = false;
+    } else if (mode == 'w') {
+        m = std::ios::out | std::ios::trunc;
+        m_read = false;
+        m_write = true;
+    } else if (mode == 'a') {
+        m = std::ios::out | std::ios::app;
+        m_read = false;
+        m_write = true;
+    } else {
+        throw AppError("Modo de apertura inválido (r|w|a).");
+    }
+
+    const bool existedBefore = std::filesystem::exists(m_info.name);
 
     m_fs.open(m_info.name, m);
     if (!m_fs) throw AppError("No se pudo abrir: " + m_info.name);
 
-    // info mínima
-    const char* user = std::getenv("USER");
-    m_info.owner = user ? user : "unknown";
-    m_info.creationDateTime = nowStr();
-    m_info.dimension = 0;
+    if (mode == 'r') {
+        m_info.owner = fileOwner(m_info.name);
+        m_info.creationDateTime = fileTimestamp(m_info.name);
+        m_info.dimension = countRowsOnDisk();
+    } else if (mode == 'a') {
+        if (existedBefore) {
+            m_info.owner = fileOwner(m_info.name);
+            m_info.creationDateTime = fileTimestamp(m_info.name);
+            m_info.dimension = countRowsOnDisk();
+        } else {
+            m_info.owner = ownerFromUid(getuid());
+            m_info.creationDateTime = nowStr();
+            m_info.dimension = 0;
+        }
+    } else { // 'w'
+        m_info.owner = ownerFromUid(getuid());
+        m_info.creationDateTime = nowStr();
+        m_info.dimension = 0;
+    }
 
+    m_rows = m_info.dimension;
     return true;
 }
 
 void File::close() {
     if (m_fs.is_open()) m_fs.close();
+    m_read = false;
+    m_write = false;
 }
 
 std::string File::getInfoTable() const {
@@ -154,6 +210,18 @@ std::string File::getInfoTable() const {
        << "Dimensión    : " << m_info.dimension << " lineas\n";
     return os.str();
 }
+
+bool File::exist() const {
+    if (m_info.name.empty()) return false;
+    std::error_code ec;
+    return std::filesystem::exists(m_info.name, ec);
+}
+
+std::string File::getNombre() const { return m_info.name; }
+std::string File::getFecha() const { return m_info.creationDateTime; }
+std::string File::getPropietario() const { return m_info.owner; }
+size_t File::getDimension() const { return m_info.dimension; }
+std::string File::getInfo() const { return getInfoTable(); }
 
 void File::writeRaw(const std::string& line) {
     if (!m_write) throw AppError("Archivo no abierto para escritura.");
@@ -199,9 +267,11 @@ std::vector<std::vector<std::string>> File::readAllRows() {
     std::vector<std::vector<std::string>> rows;
     std::string line;
     while (std::getline(m_fs, line)) {
-        if (!line.empty() && line[0] == '#') continue; // <— ignora cabeceras/comentarios
+        if (line.empty()) continue;
+        if (line[0] == '#') continue; // <— ignora cabeceras/comentarios
         rows.push_back(splitCSV(line));
     }
+    m_info.dimension = rows.size();
     return rows;
 }
 
@@ -270,3 +340,15 @@ void File::writeHeaderTag(const std::vector<std::string>& headers) {
     // NO incrementamos dimension; es metadata
 }
 
+size_t File::countRowsOnDisk() const {
+    std::ifstream is(m_info.name);
+    if (!is) return 0;
+    size_t count = 0;
+    std::string line;
+    while (std::getline(is, line)) {
+        if (line.empty()) continue;
+        if (!line.empty() && line[0] == '#') continue; // ignora cabeceras/comentarios
+        ++count;
+    }
+    return count;
+}

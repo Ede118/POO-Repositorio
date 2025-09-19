@@ -1,21 +1,15 @@
 #include "serial.h"
+#include <unistd.h>
 #include <fcntl.h>
-#include <stdexcept>
 #include <sys/select.h>
 #include <cstring>
+#include <stdexcept>
 
-static speed_t to_speed(int baud) {
-    switch (baud) {
-        case 9600: return B9600;
-        case 19200: return B19200;
-        case 38400: return B38400;
-        case 57600: return B57600;
-        case 115200: return B115200;
-        default: return B9600;
-    }
+static speed_t to_speed_const(int baud_const) {
+    return static_cast<speed_t>(baud_const);
 }
 
-SerialPort::SerialPort(const std::string& dev, int baud) {
+SerialPort::SerialPort(const std::string& dev, int baud_const) {
     fd_ = ::open(dev.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
     if (fd_ < 0) throw std::runtime_error("No se pudo abrir " + dev + ": " + std::strerror(errno));
 
@@ -24,16 +18,16 @@ SerialPort::SerialPort(const std::string& dev, int baud) {
 
     cfmakeraw(&tio);
     tio.c_cflag |= CLOCAL | CREAD;
-    tio.c_cflag &= ~CRTSCTS;        // sin HW flow
-    tio.c_cflag &= ~PARENB;         // 8N1
+    tio.c_cflag &= ~CRTSCTS;   // sin HW flow
+    tio.c_cflag &= ~PARENB;    // 8N1
     tio.c_cflag &= ~CSTOPB;
     tio.c_cflag &= ~CSIZE;
     tio.c_cflag |= CS8;
 
-    cfsetispeed(&tio, to_speed(baud));
-    cfsetospeed(&tio, to_speed(baud));
+    speed_t sp = to_speed_const(baud_const);
+    cfsetispeed(&tio, sp);
+    cfsetospeed(&tio, sp);
 
-    // VMIN/VTIME: lectura con timeout (decenas de ms)
     tio.c_cc[VMIN]  = 0;
     tio.c_cc[VTIME] = 1; // 100 ms
 
@@ -53,10 +47,10 @@ void SerialPort::writeByte(char c) {
 }
 
 void SerialPort::writeData(const void* data, size_t n) {
-    const uint8_t* p = static_cast<const uint8_t*>(data);
+    const unsigned char* p = static_cast<const unsigned char*>(data);
     while (n) {
         ssize_t w = ::write(fd_, p, n);
-        if (w < 0) throw std::runtime_error("write fallo");
+        if (w < 0) throw std::runtime_error("write falló");
         p += w; n -= w;
     }
     tcdrain(fd_);
@@ -73,6 +67,7 @@ bool SerialPort::readLine(std::string& out, int timeout_ms) {
         FD_ZERO(&rfds);
         FD_SET(fd_, &rfds);
         timeval tv{0, step*1000};
+
         int r = select(fd_+1, &rfds, nullptr, nullptr, &tv);
         if (r > 0 && FD_ISSET(fd_, &rfds)) {
             ssize_t n = ::read(fd_, &ch, 1);
@@ -85,4 +80,8 @@ bool SerialPort::readLine(std::string& out, int timeout_ms) {
             if (waited >= timeout_ms) return !out.empty();
         }
     }
+}
+
+void SerialPort::flushIn() {
+    tcflush(fd_, TCIFLUSH);
 }

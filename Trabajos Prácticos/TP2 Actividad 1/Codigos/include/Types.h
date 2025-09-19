@@ -17,18 +17,18 @@ enum class IOFormat { CSV, JSON, XML };
 
 inline IOFormat charToFormat(char c) {
     switch (c) {
-        case 'x': case 'X': return IOFormat::CSV;
+        case 'c': case 'C': return IOFormat::CSV;
         case 'j': case 'J': return IOFormat::JSON;
-        case 'c': case 'C': return IOFormat::XML;
-        default: throw std::invalid_argument("Formato inválido (use x|j|c).");
+        case 'x': case 'X': return IOFormat::XML;
+        default: throw std::invalid_argument("Formato inválido (use c|j|x).");
     }
 }
 inline const char* fmtName(IOFormat f) {
     switch (f) { case IOFormat::CSV: return "CSV"; case IOFormat::JSON: return "JSON"; default: return "XML"; }
 }
 
-// Convierte una línea recibida en formato x/j/c a un vector de strings.
-// x => CSV; j => JSON plano tipo {"a":1,"b":2}; c => XML plano <row><a>1</a>...</row>
+// Convierte una línea recibida en formato c/j/x a un vector de strings.
+// c => CSV; j => JSON plano tipo {"a":1,"b":2}; x => XML plano <row><a>1</a>...</row>
 std::vector<std::string> parseLine(IOFormat inFmt, const std::string& line,
                                    std::vector<std::string>* headersOpt = nullptr);
 

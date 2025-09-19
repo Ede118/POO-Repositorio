@@ -29,6 +29,13 @@ public:
     const FileInfo& info() const { return m_info; }
     std::string     getInfoTable() const;
 
+    bool        exist() const;
+    std::string getNombre() const;
+    std::string getFecha() const;
+    std::string getPropietario() const;
+    size_t      getDimension() const;
+    std::string getInfo() const;
+
     // Escritura
     void writeRaw(const std::string& line);                 // escribe tal cual (CSV ya formateado)
     void writeParsed(const std::vector<std::string>& fields); // une por coma
@@ -46,6 +53,10 @@ public:
     // Utilidad
     static std::vector<std::string> splitCSV(const std::string& line);
     void writeHeaderTag(const std::vector<std::string>& headers);
+    
+private:
+    size_t m_rows = 0;  // filas de datos (excluye cabeceras #h)
+    size_t countRowsOnDisk() const;
 };
 
 #endif
