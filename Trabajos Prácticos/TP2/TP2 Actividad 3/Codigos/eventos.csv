@@ -1,0 +1,5 @@
+Fecha,ID,TipoAccion,Nivel,Modulo,Linea,UserId,DeviceId,Mensaje
+2025-10-07T23:10:22,1759889422478606-0,ARRANQUE,INFO,Core,10,,,Inicializacion del sistema principal
+2025-10-07T23:10:22,1759889422502192-1,ESTADO,DEBUG,Core,42,,,Ciclo interno completado
+2025-10-07T23:10:22,1759889422502289-2,LOGIN,INFO,AuthModule,21,user-123,device-777,Usuario inicio sesion
+2025-10-07T23:10:22,1759889422502358-3,CONSULTA,INFO,APIGateway,87,user-123,device-777,Consulta de datos sensibles
